@@ -1,0 +1,125 @@
+# Poetry configuration for dependency management
+[tool.poetry]
+name = "advanced-rag-system"
+version = "1.0.0"
+description = "Production-ready RAG system with Google Cloud Vertex AI, memory management, and intelligent document sync"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.5"
+uvicorn = {extras = ["standard"], version = "^0.32.1"}
+pydantic = "^2.10.3"
+pydantic-settings = "^2.6.1"
+sqlmodel = "^0.0.22"
+aiosqlite = "^0.20.0"
+alembic = "^1.14.0"
+redis = "^5.2.0"
+aioredis = "^2.0.1"
+google-cloud-aiplatform = "^1.74.0"
+google-cloud-storage = "^2.18.2"
+google-api-python-client = "^2.154.0"
+google-auth-oauthlib = "^1.2.1"
+google-auth-httplib2 = "^0.2.0"
+vertexai = "^1.74.0"
+httpx = "^0.28.1"
+aiofiles = "^24.1.0"
+python-multipart = "^0.0.20"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+structlog = "^24.4.0"
+colorama = "^0.4.6"
+tenacity = "^9.0.0"
+PyPDF2 = "^3.0.1"
+python-docx = "^1.1.2"
+markdown = "^3.7"
+beautifulsoup4 = "^4.12.3"
+lxml = "^5.3.0"
+openpyxl = "^3.1.5"
+pandas = "^2.2.3"
+numpy = "^2.2.0"
+websockets = "^14.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+black = "^24.10.0"
+isort = "^5.13.2"
+flake8 = "^7.1.1"
+mypy = "^1.13.0"
+pre-commit = "^4.0.1"
+httpx = "^0.28.1"
+
+[tool.poetry.group.test.dependencies]
+pytest-mock = "^3.14.0"
+factory-boy = "^3.3.1"
+faker = "^33.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+line_length = 88
+known_first_party = ["app"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+strict_equality = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=80"
+]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests"
+]
