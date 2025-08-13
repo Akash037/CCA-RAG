@@ -34,11 +34,13 @@ RUN useradd --create-home --shell /bin/bash raguser \
 EXPOSE 8080
 
 # Health check - optimized for Cloud Run with longer startup time
+# Use PORT environment variable for health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD sh -c 'curl -f http://localhost:${PORT:-8080}/health || exit 1'
 
 # Switch to non-root user
 USER raguser
 
 # Run with Gunicorn as recommended by Google Cloud Run
-CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "0", "app.main:app"]
+# Use PORT environment variable provided by Cloud Run
+CMD ["sh", "-c", "gunicorn --bind :${PORT:-8080} --workers 1 --threads 8 --timeout 0 app.main:app"]

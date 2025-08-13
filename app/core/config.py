@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     # ========================
     reload: bool = Field(default=False, description="Auto-reload on changes")
     host: str = Field(default="0.0.0.0", description="Host to bind to")
-    port: int = Field(default=8080, description="Port to bind to")
+    port: int = Field(default=8080, description="Port to bind to", env="PORT")
     
     @validator("hybrid_search_alpha")
     def validate_alpha(cls, v):
