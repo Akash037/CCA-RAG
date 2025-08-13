@@ -1,0 +1,151 @@
+name: 🚀 Production Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE: precision-farm-rag
+  REGION: us-central1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔐 Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: ⚙️ Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: 🐳 Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: 📦 Create Artifact Registry repository (if needed)
+      run: |
+        gcloud artifacts repositories create rag-system \
+          --repository-format=docker \
+          --location=us-central1 \
+          --description="RAG System Docker repository" || true
+
+    - name: 🔨 Build and push Docker image
+      run: |
+        docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$GITHUB_SHA .
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$GITHUB_SHA
+
+    - name: 📝 Create deployment environment file
+      run: |
+        cat > deployment.yaml << EOF
+        apiVersion: serving.knative.dev/v1
+        kind: Service
+        metadata:
+          name: $SERVICE
+          annotations:
+            run.googleapis.com/ingress: all
+        spec:
+          template:
+            metadata:
+              annotations:
+                autoscaling.knative.dev/minScale: "0"
+                autoscaling.knative.dev/maxScale: "10"
+                run.googleapis.com/cpu-throttling: "false"
+                run.googleapis.com/execution-environment: gen2
+            spec:
+              containerConcurrency: 100
+              timeoutSeconds: 300
+              containers:
+              - image: us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$GITHUB_SHA
+                ports:
+                - containerPort: 8000
+                resources:
+                  limits:
+                    cpu: "2"
+                    memory: "2Gi"
+                env:
+                - name: ENVIRONMENT
+                  value: "production"
+                - name: DEBUG
+                  value: "false"
+                - name: GOOGLE_CLOUD_PROJECT
+                  value: "${{ secrets.GCP_PROJECT_ID }}"
+                - name: GOOGLE_CLOUD_LOCATION
+                  value: "us-central1"
+                - name: VERTEX_AI_LOCATION
+                  value: "us-central1"
+                - name: DATABASE_URL
+                  value: "${{ secrets.DATABASE_URL }}"
+                - name: REDIS_URL
+                  value: "${{ secrets.REDIS_URL }}"
+                - name: SECRET_KEY
+                  value: "${{ secrets.SECRET_KEY }}"
+                - name: RAG_DOCUMENT_CORPUS_ID
+                  value: "${{ secrets.RAG_DOCUMENT_CORPUS_ID }}"
+                - name: RAG_MEMORY_CORPUS_ID
+                  value: "${{ secrets.RAG_MEMORY_CORPUS_ID }}"
+                - name: GOOGLE_DRIVE_FOLDER_ID
+                  value: "${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}"
+                - name: GOOGLE_SHEETS_ID
+                  value: "${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}"
+                - name: ALLOWED_ORIGINS
+                  value: "*"
+                - name: GENERATION_MODEL
+                  value: "gemini-2.0-flash"
+                - name: EMBEDDING_MODEL
+                  value: "text-embedding-005"
+                - name: ENABLE_GOOGLE_DRIVE_SYNC
+                  value: "true"
+                - name: ENABLE_GOOGLE_SHEETS_LOGGING
+                  value: "true"
+                - name: MAX_RETRIEVAL_DOCUMENTS
+                  value: "10"
+                - name: SIMILARITY_THRESHOLD
+                  value: "0.7"
+                - name: HYBRID_SEARCH_ALPHA
+                  value: "0.6"
+                - name: ENABLE_RERANKING
+                  value: "true"
+                - name: MEMORY_TTL_HOURS
+                  value: "24"
+                - name: SESSION_TIMEOUT_MINUTES
+                  value: "30"
+                - name: MAX_CONVERSATION_HISTORY
+                  value: "50"
+                - name: LOG_LEVEL
+                  value: "INFO"
+                - name: LOG_FORMAT
+                  value: "json"
+                - name: GCP_SA_KEY_BASE64
+                  value: "${{ secrets.GCP_SA_KEY }}"
+        EOF
+
+    - name: 🚀 Deploy to Cloud Run
+      run: |
+        gcloud run services replace deployment.yaml --region=$REGION
+
+    - name: 🌐 Get service URL
+      run: |
+        URL=$(gcloud run services describe $SERVICE --region $REGION --format 'value(status.url)')
+        echo "🚀 Deployment successful!"
+        echo "📍 Service URL: $URL"
+        echo "🔍 Health check: $URL/health"
+        echo "📚 API docs: $URL/docs"
+
+    - name: 🔍 Test deployment
+      run: |
+        URL=$(gcloud run services describe $SERVICE --region $REGION --format 'value(status.url)')
+        sleep 30
+        if curl -f "$URL/health" -o /dev/null -s; then
+          echo "✅ Health check passed!"
+        else
+          echo "❌ Health check failed"
+          curl -v "$URL/health" || true
+          exit 1
+        fi
