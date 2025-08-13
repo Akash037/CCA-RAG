@@ -30,15 +30,15 @@ COPY . .
 RUN useradd --create-home --shell /bin/bash raguser \
     && chown -R raguser:raguser /app
 
-# Expose port
-EXPOSE 8000
+# Expose port (Cloud Run requires port 8080)
+EXPOSE 8080
 
-# Health check - give more time for initial startup and use fast root endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
-    CMD curl -f http://localhost:8000/ || exit 1
+# Health check - optimized for Cloud Run with longer startup time
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Switch to non-root user
 USER raguser
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run with Gunicorn as recommended by Google Cloud Run
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "0", "app.main:app"]

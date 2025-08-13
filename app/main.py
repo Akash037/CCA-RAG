@@ -162,9 +162,14 @@ async def root():
     """Root endpoint for Cloud Run - instant response."""
     return {"status": "ok", "message": "Advanced RAG System is running", "timestamp": time.time()}
 
-@app.get("/health", response_model=HealthCheckResponse)
+@app.get("/health")
 async def health_check():
-    """Health check endpoint - always returns 200 for Cloud Run with quick response."""
+    """Simple health check endpoint for Cloud Run - always responds quickly."""
+    return {"status": "ok", "timestamp": time.time()}
+
+@app.get("/health/detailed", response_model=HealthCheckResponse)
+async def health_check_detailed():
+    """Detailed health check endpoint - used for debugging only."""
     try:
         # Get app status (without blocking on service checks)
         app_initialized = getattr(app.state, 'initialized', False)
