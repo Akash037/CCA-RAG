@@ -200,11 +200,13 @@ service-account.json
 .gcloud/
 gcloud-service-key.json
 
-# Environment specific
+# Environment specific (SECURITY: Never commit real secrets)
+.env
 .env.*
 !.env.example
-!.env.development
-!.env.production
+# Removed exceptions for dev/prod to prevent secret exposure
+# !.env.development
+# !.env.production
 
 # Temporary files
 tmp/
