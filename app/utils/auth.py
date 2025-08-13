@@ -30,8 +30,22 @@ def get_service_account_credentials(scopes: list[str]) -> service_account.Creden
         Exception: If no valid credentials are found
     """
     try:
-        # Method 1: Use base64 encoded key from environment variable
-        if settings.gcp_sa_key_base64:
+        # Method 1: Use direct file path (preferred for Cloud Run)
+        if settings.gcp_sa_key_path:
+            logger.info(f"Loading service account credentials from key path: {settings.gcp_sa_key_path}")
+            
+            if not os.path.exists(settings.gcp_sa_key_path):
+                raise FileNotFoundError(f"Service account key file not found: {settings.gcp_sa_key_path}")
+                
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.gcp_sa_key_path, scopes=scopes
+            )
+            
+            logger.info("Successfully loaded service account credentials from key path")
+            return credentials
+        
+        # Method 2: Use base64 encoded key from environment variable
+        elif settings.gcp_sa_key_base64:
             logger.info("Loading service account credentials from environment variable")
             
             # Decode the base64 key
@@ -46,7 +60,7 @@ def get_service_account_credentials(scopes: list[str]) -> service_account.Creden
             logger.info("Successfully loaded service account credentials from environment")
             return credentials
             
-        # Method 2: Use file path
+        # Method 3: Use GOOGLE_APPLICATION_CREDENTIALS file path
         elif settings.google_application_credentials:
             logger.info(f"Loading service account credentials from file: {settings.google_application_credentials}")
             

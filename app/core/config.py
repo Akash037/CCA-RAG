@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     google_cloud_location: str = Field(default="us-central1", description="GCP region")
     google_application_credentials: Optional[str] = Field(default=None, description="Path to service account JSON")
     gcp_sa_key_base64: Optional[str] = Field(default=None, description="Base64 encoded service account key")
+    gcp_sa_key_path: Optional[str] = Field(default=None, description="Path to service account key file")
     
     # ========================
     # Vertex AI Configuration
