@@ -42,38 +42,7 @@ jobs:
 
     - name: Deploy to Cloud Run
       run: |
-        # Create env vars file with proper escaping
-        cat > env_vars.txt << 'EOF'
-        ENVIRONMENT=production
-        DEBUG=false
-        GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}
-        GOOGLE_CLOUD_LOCATION=us-central1
-        VERTEX_AI_LOCATION=us-central1
-        DATABASE_URL=${{ secrets.DATABASE_URL }}
-        REDIS_URL=${{ secrets.REDIS_URL }}
-        SECRET_KEY=${{ secrets.SECRET_KEY }}
-        RAG_DOCUMENT_CORPUS_ID=${{ secrets.RAG_DOCUMENT_CORPUS_ID }}
-        RAG_MEMORY_CORPUS_ID=${{ secrets.RAG_MEMORY_CORPUS_ID }}
-        GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-        GOOGLE_SHEETS_ID=${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-        ALLOWED_ORIGINS=*
-        GENERATION_MODEL=gemini-2.0-flash
-        EMBEDDING_MODEL=text-embedding-005
-        ENABLE_GOOGLE_DRIVE_SYNC=true
-        ENABLE_GOOGLE_SHEETS_LOGGING=true
-        MAX_RETRIEVAL_DOCUMENTS=10
-        SIMILARITY_THRESHOLD=0.7
-        HYBRID_SEARCH_ALPHA=0.6
-        ENABLE_RERANKING=true
-        MEMORY_TTL_HOURS=24
-        SESSION_TIMEOUT_MINUTES=30
-        MAX_CONVERSATION_HISTORY=50
-        LOG_LEVEL=INFO
-        LOG_FORMAT=json
-        GCP_SA_KEY_BASE64=${{ secrets.GCP_SA_KEY }}
-        EOF
-        
-        # Deploy with environment variables
+        # Create individual environment variables for gcloud
         gcloud run deploy $SERVICE \
           --image us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$GITHUB_SHA \
           --region $REGION \
@@ -85,7 +54,33 @@ jobs:
           --max-instances 10 \
           --timeout 300 \
           --port 8000 \
-          --set-env-vars "$(tr '\n' ',' < env_vars.txt | sed 's/,$//')"
+          --set-env-vars ENVIRONMENT=production \
+          --set-env-vars DEBUG=false \
+          --set-env-vars GOOGLE_CLOUD_PROJECT="${{ secrets.GCP_PROJECT_ID }}" \
+          --set-env-vars GOOGLE_CLOUD_LOCATION=us-central1 \
+          --set-env-vars VERTEX_AI_LOCATION=us-central1 \
+          --set-env-vars DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+          --set-env-vars REDIS_URL="${{ secrets.REDIS_URL }}" \
+          --set-env-vars SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+          --set-env-vars RAG_DOCUMENT_CORPUS_ID="${{ secrets.RAG_DOCUMENT_CORPUS_ID }}" \
+          --set-env-vars RAG_MEMORY_CORPUS_ID="${{ secrets.RAG_MEMORY_CORPUS_ID }}" \
+          --set-env-vars GOOGLE_DRIVE_FOLDER_ID="${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
+          --set-env-vars GOOGLE_SHEETS_ID="${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" \
+          --set-env-vars ALLOWED_ORIGINS="*" \
+          --set-env-vars GENERATION_MODEL=gemini-2.0-flash \
+          --set-env-vars EMBEDDING_MODEL=text-embedding-005 \
+          --set-env-vars ENABLE_GOOGLE_DRIVE_SYNC=true \
+          --set-env-vars ENABLE_GOOGLE_SHEETS_LOGGING=true \
+          --set-env-vars MAX_RETRIEVAL_DOCUMENTS=10 \
+          --set-env-vars SIMILARITY_THRESHOLD=0.7 \
+          --set-env-vars HYBRID_SEARCH_ALPHA=0.6 \
+          --set-env-vars ENABLE_RERANKING=true \
+          --set-env-vars MEMORY_TTL_HOURS=24 \
+          --set-env-vars SESSION_TIMEOUT_MINUTES=30 \
+          --set-env-vars MAX_CONVERSATION_HISTORY=50 \
+          --set-env-vars LOG_LEVEL=INFO \
+          --set-env-vars LOG_FORMAT=json \
+          --set-env-vars GCP_SA_KEY_BASE64="${{ secrets.GCP_SA_KEY }}"
 
     - name: Get service URL
       run: |
