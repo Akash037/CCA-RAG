@@ -40,6 +40,10 @@ jobs:
         docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$GITHUB_SHA .
         docker push us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$GITHUB_SHA
 
+    - name: Create service account key file
+      run: |
+        echo '${{ secrets.GCP_SA_KEY }}' > /tmp/rag-service-account.json
+
     - name: Deploy to Cloud Run
       run: |
         gcloud run deploy $SERVICE \
@@ -53,8 +57,8 @@ jobs:
           --max-instances 10 \
           --timeout 300 \
           --port 8000 \
-          --set-env-vars="ENVIRONMENT=production,DEBUG=false,GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/rag-service-account.json,VERTEX_AI_LOCATION=us-central1,DATABASE_URL=${{ secrets.DATABASE_URL }},REDIS_URL=${{ secrets.REDIS_URL }},SECRET_KEY=${{ secrets.SECRET_KEY }},RAG_DOCUMENT_CORPUS_ID=${{ secrets.RAG_DOCUMENT_CORPUS_ID }},RAG_MEMORY_CORPUS_ID=${{ secrets.RAG_MEMORY_CORPUS_ID }},GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }},GOOGLE_SHEETS_SPREADSHEET_ID=${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }},ALLOWED_ORIGINS=[\"*\"],GENERATION_MODEL=gemini-2.0-flash,EMBEDDING_MODEL=text-embedding-005,ENABLE_GOOGLE_DRIVE_SYNC=true,ENABLE_GOOGLE_SHEETS_LOGGING=true,MAX_RETRIEVAL_DOCUMENTS=10,SIMILARITY_THRESHOLD=0.7,HYBRID_SEARCH_ALPHA=0.6,ENABLE_RERANKING=true,MEMORY_TTL_HOURS=24,SESSION_TIMEOUT_MINUTES=30,MAX_CONVERSATION_HISTORY=50,LOG_LEVEL=INFO,LOG_FORMAT=json" \
-          --set-secrets="/app/credentials/rag-service-account.json=${{ secrets.GCP_SA_KEY }}:latest"
+          --set-env-vars="ENVIRONMENT=production,DEBUG=false,GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/rag-service-account.json,VERTEX_AI_LOCATION=us-central1,DATABASE_URL=${{ secrets.DATABASE_URL }},REDIS_URL=${{ secrets.REDIS_URL }},SECRET_KEY=${{ secrets.SECRET_KEY }},RAG_DOCUMENT_CORPUS_ID=${{ secrets.RAG_DOCUMENT_CORPUS_ID }},RAG_MEMORY_CORPUS_ID=${{ secrets.RAG_MEMORY_CORPUS_ID }},GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }},GOOGLE_SHEETS_SPREADSHEET_ID=${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }},ALLOWED_ORIGINS=*,GENERATION_MODEL=gemini-2.0-flash,EMBEDDING_MODEL=text-embedding-005,ENABLE_GOOGLE_DRIVE_SYNC=true,ENABLE_GOOGLE_SHEETS_LOGGING=true,MAX_RETRIEVAL_DOCUMENTS=10,SIMILARITY_THRESHOLD=0.7,HYBRID_SEARCH_ALPHA=0.6,ENABLE_RERANKING=true,MEMORY_TTL_HOURS=24,SESSION_TIMEOUT_MINUTES=30,MAX_CONVERSATION_HISTORY=50,LOG_LEVEL=INFO,LOG_FORMAT=json" \
+          --update-secrets="/app/credentials/rag-service-account.json=/tmp/rag-service-account.json"
 
     - name: Get service URL
       run: |
