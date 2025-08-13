@@ -1,20 +1,18 @@
 # Core dependencies
 fastapi==0.115.5
-uvicorn[standard]==0.30.6
-pydantic==2.8.2
-pydantic-settings==2.5.2
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
 
 # Google Cloud
 google-cloud-aiplatform==1.70.0
-google-cloud-storage==2.18.0
-google-cloud-sql-connector==1.13.0
-google-cloud-firestore==2.19.0
+google-cloud-storage==2.18.2
 google-auth==2.35.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
 
 # Google APIs
-google-api-python-client==2.147.0
+google-api-python-client==2.154.0
 google-api-core==2.19.2
 
 # Database
