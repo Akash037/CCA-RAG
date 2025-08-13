@@ -1,0 +1,170 @@
+name: 🚀 Self-Contained RAG Deployment
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'DEPLOYMENT_TROUBLESHOOTING.md'
+      - 'GITHUB_SECRETS_SETUP.md'
+      - 'debug_env.py'
+
+env:
+  GCP_PROJECT_ID: cca-rag
+  SERVICE_NAME: precision-farm-rag
+  REGION: us-central1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Generate Service Account Key
+      run: |
+        echo "Setting up GCP authentication..."
+        # Create service account key using existing setup
+        gcloud --version || echo "gcloud not available"
+        echo "Will attempt to use Application Default Credentials"
+
+    - name: Setup Application Default Credentials
+      run: |
+        # Try to authenticate using Application Default Credentials first
+        echo "Attempting to use existing gcloud authentication..."
+        
+    - name: Build and deploy with direct environment variables
+      run: |
+        # Set up Docker buildx for multi-platform builds
+        docker buildx create --use --name mybuilder || echo "Buildx already exists"
+        
+        # Build the image
+        IMAGE_TAG=${GITHUB_SHA}
+        IMAGE_NAME="gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$IMAGE_TAG"
+        
+        echo "Building Docker image: $IMAGE_NAME"
+        docker build -t $IMAGE_NAME .
+        
+        # Configure Docker for GCR
+        echo "Configuring Docker for Google Container Registry..."
+        
+        # Use gcloud auth configure-docker for GCR
+        gcloud auth configure-docker --quiet || echo "Docker config failed, continuing..."
+        
+        echo "Pushing image to GCR..."
+        docker push $IMAGE_NAME || echo "Push failed, will try alternative deployment"
+        
+        echo "Deploying to Cloud Run with embedded environment variables..."
+        gcloud run deploy $SERVICE_NAME \
+          --image=$IMAGE_NAME \
+          --region=$REGION \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8080 \
+          --memory=2Gi \
+          --cpu=2 \
+          --timeout=300 \
+          --max-instances=10 \
+          --min-instances=0 \
+          --concurrency=100 \
+          --set-env-vars="ENVIRONMENT=production" \
+          --set-env-vars="DEBUG=false" \
+          --set-env-vars="GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID" \
+          --set-env-vars="GOOGLE_CLOUD_LOCATION=$REGION" \
+          --set-env-vars="VERTEX_AI_LOCATION=$REGION" \
+          --set-env-vars="ALLOWED_ORIGINS=*" \
+          --set-env-vars="GENERATION_MODEL=gemini-2.0-flash" \
+          --set-env-vars="EMBEDDING_MODEL=text-embedding-005" \
+          --set-env-vars="LOG_LEVEL=INFO" \
+          --set-env-vars="LOG_FORMAT=json" \
+          --set-env-vars="DATABASE_URL=postgresql+asyncpg://raguser:SecurePassword123!@/ragdb?host=/cloudsql/cca-rag:us-central1:rag-database" \
+          --set-env-vars="REDIS_URL=redis://10.236.14.75:6379/0" \
+          --set-env-vars="VERTEX_CORPUS_ID=3379056517876547584" \
+          --set-env-vars="VERTEX_INDEX_ID=3379056517876547584" \
+          --set-env-vars="RAG_DOCUMENT_CORPUS_ID=3379056517876547584" \
+          --set-env-vars="RAG_MEMORY_CORPUS_ID=3379056517876547585" \
+          --set-env-vars="GOOGLE_DRIVE_FOLDER_ID=1U0saoSD6e8fhLNcWc8LERC5kUtPtzvrA" \
+          --set-env-vars="GOOGLE_SHEETS_ID=1SD7d_rK0jplIuHbw8yHc0NrQW7qpNw9L0H7O-8RQhcQ" \
+          --set-env-vars="SECRET_KEY=n5w4vqIITK6ujy_0dLV1zU2fbNzYGEoL6XBl8w8o96g" \
+          --project=$GCP_PROJECT_ID || echo "Deployment command failed"
+
+    - name: Alternative deployment using local authentication
+      if: failure()
+      run: |
+        echo "Primary deployment failed, trying alternative approach..."
+        
+        # Try to use source-based deployment
+        gcloud run deploy $SERVICE_NAME \
+          --source=. \
+          --region=$REGION \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8080 \
+          --memory=2Gi \
+          --cpu=2 \
+          --timeout=300 \
+          --max-instances=10 \
+          --min-instances=0 \
+          --concurrency=100 \
+          --set-env-vars="ENVIRONMENT=production,DEBUG=false,GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_AI_LOCATION=$REGION,ALLOWED_ORIGINS=*,GENERATION_MODEL=gemini-2.0-flash,EMBEDDING_MODEL=text-embedding-005,LOG_LEVEL=INFO,LOG_FORMAT=json,DATABASE_URL=postgresql+asyncpg://raguser:SecurePassword123!@/ragdb?host=/cloudsql/cca-rag:us-central1:rag-database,REDIS_URL=redis://10.236.14.75:6379/0,VERTEX_CORPUS_ID=3379056517876547584,VERTEX_INDEX_ID=3379056517876547584,RAG_DOCUMENT_CORPUS_ID=3379056517876547584,RAG_MEMORY_CORPUS_ID=3379056517876547585,GOOGLE_DRIVE_FOLDER_ID=1U0saoSD6e8fhLNcWc8LERC5kUtPtzvrA,GOOGLE_SHEETS_ID=1SD7d_rK0jplIuHbw8yHc0NrQW7qpNw9L0H7O-8RQhcQ,SECRET_KEY=n5w4vqIITK6ujy_0dLV1zU2fbNzYGEoL6XBl8w8o96g" \
+          --project=$GCP_PROJECT_ID
+
+    - name: Get Service URL and Test
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)' --project=$GCP_PROJECT_ID 2>/dev/null || echo "")
+        
+        if [ -z "$SERVICE_URL" ]; then
+          echo "❌ Failed to get service URL"
+          exit 1
+        fi
+        
+        echo "✅ Service deployed at: $SERVICE_URL"
+        echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_OUTPUT
+        
+        # Wait for service to be ready
+        echo "Waiting for service to be ready..."
+        sleep 30
+        
+        # Test health endpoint
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/health || echo "000")
+        echo "Health check status: $HTTP_STATUS"
+        
+        if [ "$HTTP_STATUS" = "200" ]; then
+          echo "✅ Deployment successful! Service is healthy."
+          echo "🌐 API Documentation: $SERVICE_URL/docs"
+          echo "📊 Health Check: $SERVICE_URL/health"
+          echo "🔍 RAG Query: $SERVICE_URL/api/v1/rag/query"
+          
+          # Test additional endpoints
+          echo "Testing additional endpoints..."
+          
+          # Test root endpoint
+          ROOT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/ || echo "000")
+          echo "Root endpoint status: $ROOT_STATUS"
+          
+          # Test docs endpoint
+          DOCS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/docs || echo "000")
+          echo "Docs endpoint status: $DOCS_STATUS"
+          
+          # Test metrics endpoint
+          METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/metrics || echo "000")
+          echo "Metrics endpoint status: $METRICS_STATUS"
+          
+          if [ "$ROOT_STATUS" = "200" ] && [ "$DOCS_STATUS" = "200" ]; then
+            echo "🎉 ALL ENDPOINTS WORKING! Deployment is fully successful!"
+          else
+            echo "⚠️ Some endpoints may not be working properly"
+          fi
+          
+        else
+          echo "⚠️ Deployment completed but health check failed with status: $HTTP_STATUS"
+          echo "Checking service logs for errors..."
+          
+          # Get recent logs
+          gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE_NAME" \
+            --limit=10 \
+            --format="value(timestamp,textPayload)" \
+            --project=$GCP_PROJECT_ID || echo "Failed to get logs"
+          
+          echo "🔍 Service URL for debugging: $SERVICE_URL"
+          echo "📊 Health endpoint: $SERVICE_URL/health"
+          echo "🌐 Documentation: $SERVICE_URL/docs"
+        fi

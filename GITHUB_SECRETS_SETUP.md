@@ -10,6 +10,12 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions 
 GCP_PROJECT_ID
 Value: cca-rag
 
+SERVICE_NAME  
+Value: precision-farm-rag
+
+REGION
+Value: us-central1
+
 GCP_SA_KEY
 Value: <paste the entire JSON content from your service account key>
 
@@ -21,6 +27,12 @@ Value: redis://10.236.14.75:6379/0
 
 SECRET_KEY
 Value: p6AV5VCF1Kszf-hG3_09WAR1xIB4EvzYnoIS6HDZhiI
+
+VERTEX_CORPUS_ID
+Value: <get from Vertex AI console or use RAG_DOCUMENT_CORPUS_ID value>
+
+VERTEX_INDEX_ID  
+Value: <get from Vertex AI console - likely your vector search index ID>
 
 RAG_DOCUMENT_CORPUS_ID
 Value: 3379056517876547584
