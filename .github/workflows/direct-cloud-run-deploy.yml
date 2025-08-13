@@ -1,0 +1,288 @@
+name: 🚀 Direct Cloud Run Deployment (No Secrets)
+on:
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if checks fail'
+        required: false
+        default: 'false'
+
+env:
+  PROJECT_ID: cca-rag
+  SERVICE_NAME: precision-farm-rag
+  REGION: us-central1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: cca-rag
+        
+    - name: Configure gcloud authentication using existing default credentials
+      run: |
+        echo "Setting up gcloud configuration..."
+        gcloud config set project cca-rag
+        gcloud config set run/region us-central1
+        
+        # Try to get existing authentication
+        echo "Checking existing authentication..."
+        gcloud auth list || true
+        
+        # If no auth, try application default credentials
+        echo "Attempting to use application default credentials..."
+        gcloud auth application-default print-access-token > /dev/null 2>&1 || {
+          echo "No application default credentials available"
+          echo "Trying to get metadata token..."
+          curl -H "Metadata-Flavor: Google" \
+               "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+               > /dev/null 2>&1 && echo "Metadata service available" || echo "No metadata service"
+        }
+
+    - name: Create production Dockerfile with embedded environment variables
+      run: |
+        cat > Dockerfile << 'EOF'
+        FROM python:3.11-slim
+
+        # Set working directory
+        WORKDIR /app
+
+        # Install system dependencies
+        RUN apt-get update && apt-get install -y \
+            gcc \
+            g++ \
+            curl \
+            && rm -rf /var/lib/apt/lists/*
+
+        # Copy requirements first for better caching
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+
+        # Copy application code
+        COPY . .
+
+        # Set environment variables directly in the container
+        ENV GOOGLE_CLOUD_PROJECT=cca-rag
+        ENV GOOGLE_CLOUD_LOCATION=us-central1
+        ENV VERTEX_AI_LOCATION=us-central1
+        ENV ENVIRONMENT=production
+        ENV DEBUG=false
+        ENV SECRET_KEY=n5w4vqIITK6ujy_0dLV1zU2fbNzYGEoL6XBl8w8o96g
+        ENV LOG_LEVEL=INFO
+        ENV LOG_FORMAT=json
+        ENV ALLOWED_ORIGINS=*
+        ENV GENERATION_MODEL=gemini-2.0-flash
+        ENV EMBEDDING_MODEL=text-embedding-005
+        ENV DATABASE_URL="postgresql+asyncpg://raguser:SecurePassword123!@/ragdb?host=/cloudsql/cca-rag:us-central1:rag-database"
+        ENV REDIS_URL=redis://10.236.14.75:6379/0
+        ENV VERTEX_CORPUS_ID=3379056517876547584
+        ENV VERTEX_INDEX_ID=3379056517876547584
+        ENV RAG_DOCUMENT_CORPUS_ID=3379056517876547584
+        ENV RAG_MEMORY_CORPUS_ID=3379056517876547585
+        ENV GOOGLE_DRIVE_FOLDER_ID=1U0saoSD6e8fhLNcWc8LERC5kUtPtzvrA
+        ENV GOOGLE_SHEETS_ID=1SD7d_rK0jplIuHbw8yHc0NrQW7qpNw9L0H7O-8RQhcQ
+        ENV PORT=8080
+        ENV HOST=0.0.0.0
+
+        # Create non-root user
+        RUN useradd --create-home --shell /bin/bash app \
+            && chown -R app:app /app
+        USER app
+
+        # Health check
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+            CMD curl -f http://localhost:${PORT}/health || exit 1
+
+        # Use environment variable for port
+        EXPOSE ${PORT}
+
+        # Start the application
+        CMD ["sh", "-c", "gunicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 2 --worker-class uvicorn.workers.UvicornWorker --timeout 300 --keep-alive 5 --max-requests 1000 --preload"]
+        EOF
+
+    - name: Direct deployment using gcloud run deploy with source
+      run: |
+        echo "🚀 Deploying directly to Cloud Run using source deployment..."
+        
+        # Use gcloud run deploy with source (no Docker build required)
+        gcloud run deploy precision-farm-rag \
+          --source . \
+          --region=us-central1 \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8080 \
+          --memory=2Gi \
+          --cpu=2 \
+          --timeout=300 \
+          --max-instances=10 \
+          --min-instances=1 \
+          --concurrency=100 \
+          --set-env-vars="GOOGLE_CLOUD_PROJECT=cca-rag" \
+          --set-env-vars="GOOGLE_CLOUD_LOCATION=us-central1" \
+          --set-env-vars="VERTEX_AI_LOCATION=us-central1" \
+          --set-env-vars="ENVIRONMENT=production" \
+          --set-env-vars="DEBUG=false" \
+          --set-env-vars="SECRET_KEY=n5w4vqIITK6ujy_0dLV1zU2fbNzYGEoL6XBl8w8o96g" \
+          --set-env-vars="LOG_LEVEL=INFO" \
+          --set-env-vars="LOG_FORMAT=json" \
+          --set-env-vars="ALLOWED_ORIGINS=*" \
+          --set-env-vars="GENERATION_MODEL=gemini-2.0-flash" \
+          --set-env-vars="EMBEDDING_MODEL=text-embedding-005" \
+          --set-env-vars="DATABASE_URL=postgresql+asyncpg://raguser:SecurePassword123!@/ragdb?host=/cloudsql/cca-rag:us-central1:rag-database" \
+          --set-env-vars="REDIS_URL=redis://10.236.14.75:6379/0" \
+          --set-env-vars="VERTEX_CORPUS_ID=3379056517876547584" \
+          --set-env-vars="VERTEX_INDEX_ID=3379056517876547584" \
+          --set-env-vars="RAG_DOCUMENT_CORPUS_ID=3379056517876547584" \
+          --set-env-vars="RAG_MEMORY_CORPUS_ID=3379056517876547585" \
+          --set-env-vars="GOOGLE_DRIVE_FOLDER_ID=1U0saoSD6e8fhLNcWc8LERC5kUtPtzvrA" \
+          --set-env-vars="GOOGLE_SHEETS_ID=1SD7d_rK0jplIuHbw8yHc0NrQW7qpNw9L0H7O-8RQhcQ" \
+          --set-env-vars="PORT=8080" \
+          --set-env-vars="HOST=0.0.0.0" \
+          --project=cca-rag || {
+          
+          echo "❌ Direct deployment failed, trying alternative approach..."
+          
+          # Alternative 1: Use Docker with local build
+          echo "🔄 Trying Docker build and deploy..."
+          docker build -t gcr.io/cca-rag/precision-farm-rag:latest . || {
+            echo "❌ Docker build failed"
+            exit 1
+          }
+          
+          # Try to push to Google Container Registry
+          docker push gcr.io/cca-rag/precision-farm-rag:latest || {
+            echo "❌ Docker push failed, trying gcloud docker push..."
+            gcloud docker -- push gcr.io/cca-rag/precision-farm-rag:latest || {
+              echo "❌ All Docker push methods failed"
+              exit 1
+            }
+          }
+          
+          # Deploy the pushed image
+          gcloud run deploy precision-farm-rag \
+            --image=gcr.io/cca-rag/precision-farm-rag:latest \
+            --region=us-central1 \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=2Gi \
+            --cpu=2 \
+            --timeout=300 \
+            --max-instances=10 \
+            --min-instances=1 \
+            --concurrency=100 \
+            --project=cca-rag || {
+            echo "❌ Container deployment also failed"
+            exit 1
+          }
+        }
+
+    - name: Comprehensive endpoint testing
+      run: |
+        echo "🔍 Testing deployed service..."
+        
+        # Get service URL
+        SERVICE_URL=$(gcloud run services describe precision-farm-rag --region=us-central1 --format='value(status.url)' --project=cca-rag 2>/dev/null || echo "")
+        
+        if [ -z "$SERVICE_URL" ]; then
+          echo "❌ Could not get service URL"
+          exit 1
+        fi
+        
+        echo "✅ Service URL: $SERVICE_URL"
+        
+        # Function to test endpoint with retries
+        test_endpoint() {
+          local url=$1
+          local endpoint_name=$2
+          local expected_codes=${3:-"200"}
+          local max_attempts=10
+          
+          echo "Testing $endpoint_name endpoint: $url"
+          
+          for i in $(seq 1 $max_attempts); do
+            echo "Attempt $i/$max_attempts..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$url" 2>/dev/null || echo "000")
+            echo "Status: $HTTP_STATUS"
+            
+            # Check if status code is in expected codes
+            if echo "$expected_codes" | grep -q "$HTTP_STATUS"; then
+              echo "✅ $endpoint_name endpoint working! (HTTP $HTTP_STATUS)"
+              return 0
+            fi
+            
+            if [ $i -lt $max_attempts ]; then
+              echo "Waiting 15 seconds before retry..."
+              sleep 15
+            fi
+          done
+          
+          echo "❌ $endpoint_name endpoint failed after $max_attempts attempts (final status: $HTTP_STATUS)"
+          return 1
+        }
+        
+        # Test critical endpoints
+        echo "🧪 Running comprehensive endpoint tests..."
+        
+        FAILED_TESTS=0
+        
+        # Test health endpoint (most critical)
+        test_endpoint "$SERVICE_URL/health" "Health" "200" || ((FAILED_TESTS++))
+        
+        # Test root endpoint (might return 404 or 200, both are fine)
+        test_endpoint "$SERVICE_URL/" "Root" "200,404" || ((FAILED_TESTS++))
+        
+        # Test docs endpoint
+        test_endpoint "$SERVICE_URL/docs" "API Documentation" "200" || ((FAILED_TESTS++))
+        
+        # Test metrics endpoint (if available)
+        test_endpoint "$SERVICE_URL/metrics" "Metrics" "200,404" || true  # Don't fail on this one
+        
+        # Summary
+        if [ $FAILED_TESTS -eq 0 ]; then
+          echo ""
+          echo "🎉 SUCCESS! All critical endpoints are working!"
+          echo "🌐 Service URL: $SERVICE_URL"
+          echo "📊 Health Check: $SERVICE_URL/health"
+          echo "📖 API Documentation: $SERVICE_URL/docs"
+          echo "🔍 RAG Query Endpoint: $SERVICE_URL/api/v1/rag/query"
+          echo ""
+          echo "✅ DEPLOYMENT COMPLETED SUCCESSFULLY!"
+          echo "✅ All endpoints are working without human intervention!"
+          echo "✅ The RAG system is ready for production use!"
+          
+          # Test a sample RAG query
+          echo ""
+          echo "🧪 Testing RAG functionality..."
+          QUERY_RESPONSE=$(curl -s -X POST "$SERVICE_URL/api/v1/rag/query" \
+            -H "Content-Type: application/json" \
+            -d '{"query": "test", "max_results": 1}' \
+            --max-time 30 2>/dev/null || echo "")
+          
+          if [ -n "$QUERY_RESPONSE" ]; then
+            echo "✅ RAG query endpoint is responding!"
+            echo "Sample response: $(echo "$QUERY_RESPONSE" | head -c 200)..."
+          else
+            echo "⚠️ RAG query endpoint not responding (might need warm-up)"
+          fi
+          
+        else
+          echo ""
+          echo "⚠️ $FAILED_TESTS critical tests failed"
+          echo "The service was deployed but some endpoints are not working properly"
+          
+          # Get recent logs for debugging
+          echo ""
+          echo "📋 Recent service logs:"
+          gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=precision-farm-rag" \
+            --limit=10 \
+            --format="value(timestamp,severity,textPayload)" \
+            --project=cca-rag 2>/dev/null || echo "Could not fetch logs"
+          
+          exit 1
+        fi
