@@ -1,0 +1,123 @@
+name: 🎯 Minimal Robust Deployment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE: precision-farm-rag
+  REGION: us-central1
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: 📥 Checkout
+      uses: actions/checkout@v4
+
+    - name: 🔐 Auth to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: ⚙️ Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        version: 'latest'
+
+    - name: 🐳 Configure Docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: 🔨 Build Image
+      run: |
+        docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$IMAGE_TAG .
+        docker tag us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$IMAGE_TAG us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:latest
+
+    - name: 📦 Push Image
+      run: |
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$IMAGE_TAG
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:latest
+
+    - name: 🚀 Deploy Service
+      run: |
+        cat > service.yaml << EOF
+        apiVersion: serving.knative.dev/v1
+        kind: Service
+        metadata:
+          name: $SERVICE
+          annotations:
+            run.googleapis.com/ingress: all
+        spec:
+          template:
+            metadata:
+              annotations:
+                autoscaling.knative.dev/minScale: "0"
+                autoscaling.knative.dev/maxScale: "10"
+            spec:
+              containerConcurrency: 100
+              timeoutSeconds: 300
+              containers:
+              - image: us-central1-docker.pkg.dev/$PROJECT_ID/rag-system/$SERVICE:$IMAGE_TAG
+                ports:
+                - containerPort: 8000
+                resources:
+                  limits:
+                    cpu: "2"
+                    memory: "2Gi"
+                env:
+                - name: ENVIRONMENT
+                  value: "production"
+                - name: DEBUG
+                  value: "false"
+                - name: GOOGLE_CLOUD_PROJECT
+                  value: "$PROJECT_ID"
+                - name: GOOGLE_CLOUD_LOCATION
+                  value: "us-central1"
+                - name: VERTEX_AI_LOCATION
+                  value: "us-central1"
+                - name: ALLOWED_ORIGINS
+                  value: "*"
+                - name: GENERATION_MODEL
+                  value: "gemini-2.0-flash"
+                - name: EMBEDDING_MODEL
+                  value: "text-embedding-005"
+                - name: LOG_LEVEL
+                  value: "INFO"
+                - name: LOG_FORMAT
+                  value: "json"
+        EOF
+        
+        gcloud run services replace service.yaml --region=$REGION
+
+    - name: 🌐 Get URL
+      id: url
+      run: |
+        URL=$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.url)')
+        echo "url=$URL" >> $GITHUB_OUTPUT
+        echo "🚀 Deployed to: $URL"
+
+    - name: ✅ Test Health
+      run: |
+        URL="${{ steps.url.outputs.url }}"
+        echo "Testing health endpoint: $URL/health"
+        sleep 30
+        
+        for i in {1..5}; do
+          if curl -f "$URL/health" -m 10; then
+            echo "✅ Health check passed!"
+            exit 0
+          fi
+          echo "⏳ Attempt $i failed, retrying..."
+          sleep 10
+        done
+        
+        echo "❌ Health check failed after 5 attempts"
+        echo "Service may still be starting up..."
