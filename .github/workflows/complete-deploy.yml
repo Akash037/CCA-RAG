@@ -70,7 +70,7 @@ jobs:
           --set-env-vars="RAG_DOCUMENT_CORPUS_ID=${{ secrets.RAG_DOCUMENT_CORPUS_ID }}" \
           --set-env-vars="RAG_MEMORY_CORPUS_ID=${{ secrets.RAG_MEMORY_CORPUS_ID }}" \
           --set-env-vars="GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
-          --set-env-vars="GOOGLE_SHEETS_SPREADSHEET_ID=${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" \
+          --set-env-vars="GOOGLE_SHEETS_ID=${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" \
           --set-env-vars="SECRET_KEY=${{ secrets.SECRET_KEY }}"
 
     - name: Get Service URL
