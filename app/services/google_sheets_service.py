@@ -26,6 +26,7 @@ from googleapiclient.errors import HttpError
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..models.schemas import QueryRequest, QueryResponse, QueryType
+from ..utils.auth import get_service_account_credentials
 
 logger = get_logger(__name__)
 
@@ -126,27 +127,15 @@ class GoogleSheetsService:
             logger.error("Failed to initialize Google Sheets service", error=str(e))
             raise
     
-    async def _load_credentials(self) -> Credentials:
-        """Load Google Sheets credentials."""
+    async def _load_credentials(self):
+        """Load Google Sheets credentials using service account."""
         try:
-            # Try to load from file first
-            if settings.google_sheets_token_path and \
-               os.path.exists(settings.google_sheets_token_path):
-                creds = Credentials.from_authorized_user_file(
-                    settings.google_sheets_token_path,
-                    scopes=['https://www.googleapis.com/auth/spreadsheets']
-                )
-                
-                # Refresh if necessary
-                if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(Request())
-                
-                if creds and creds.valid:
-                    return creds
+            # Get service account credentials with Sheets scope
+            scopes = ['https://www.googleapis.com/auth/spreadsheets']
+            credentials = get_service_account_credentials(scopes)
             
-            # If no valid credentials, need to run OAuth flow
-            logger.error("No valid Google Sheets credentials found")
-            raise Exception("Google Sheets authentication required")
+            logger.info("Successfully loaded Google Sheets service account credentials")
+            return credentials
             
         except Exception as e:
             logger.error("Failed to load Google Sheets credentials", error=str(e))

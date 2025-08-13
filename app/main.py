@@ -11,6 +11,7 @@ Implements:
 """
 
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
@@ -33,20 +34,34 @@ from .services.memory_manager import memory_manager
 from .services.rag_service import rag_service
 from .services.google_drive_service import drive_sync_service
 from .services.google_sheets_service import query_logger, analytics_tracker
+from .utils.auth import create_temp_credentials_file, cleanup_temp_file
 
 logger = get_logger(__name__)
 
 # Security
 security = HTTPBearer(auto_error=False)
 
+# Global variable to track temp credentials file
+temp_credentials_file = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
+    global temp_credentials_file
+    
     # Startup
     logger.info("Starting RAG application")
     
     try:
+        # Setup Google Cloud credentials if needed
+        if settings.gcp_sa_key_base64 and not settings.google_application_credentials:
+            temp_credentials_file = create_temp_credentials_file()
+            if temp_credentials_file:
+                # Set environment variable for Google clients
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_credentials_file
+                logger.info("Set up temporary credentials file for Google services")
+        
         # Initialize database
         await database_manager.initialize()
         logger.info("Database initialized")
@@ -104,6 +119,12 @@ async def lifespan(app: FastAPI):
         
         # Close database connections
         await database_manager.close_all()
+        
+        # Cleanup temporary credentials file
+        if temp_credentials_file:
+            cleanup_temp_file(temp_credentials_file)
+            if 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+                del os.environ['GOOGLE_APPLICATION_CREDENTIALS']
         
         logger.info("RAG application shutdown complete")
         

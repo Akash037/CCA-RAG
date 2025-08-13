@@ -43,6 +43,7 @@ from ..core.config import settings
 from ..core.database import DatabaseManager
 from ..core.logging import get_logger
 from ..models.schemas import DocumentMetadata, SyncStatus
+from ..utils.auth import get_service_account_credentials
 
 logger = get_logger(__name__)
 
@@ -253,26 +254,15 @@ class GoogleDriveService:
             logger.error("Failed to initialize Google Drive service", error=str(e))
             raise
     
-    async def _load_credentials(self) -> Credentials:
-        """Load Google Drive credentials."""
+    async def _load_credentials(self):
+        """Load Google Drive credentials using service account."""
         try:
-            # Try to load from file first
-            if os.path.exists(settings.google_drive_token_path):
-                creds = Credentials.from_authorized_user_file(
-                    settings.google_drive_token_path,
-                    scopes=['https://www.googleapis.com/auth/drive.readonly']
-                )
-                
-                # Refresh if necessary
-                if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(Request())
-                
-                if creds and creds.valid:
-                    return creds
+            # Get service account credentials with Drive scope
+            scopes = ['https://www.googleapis.com/auth/drive.readonly']
+            credentials = get_service_account_credentials(scopes)
             
-            # If no valid credentials, need to run OAuth flow
-            logger.error("No valid Google Drive credentials found")
-            raise Exception("Google Drive authentication required")
+            logger.info("Successfully loaded Google Drive service account credentials")
+            return credentials
             
         except Exception as e:
             logger.error("Failed to load Google Drive credentials", error=str(e))
