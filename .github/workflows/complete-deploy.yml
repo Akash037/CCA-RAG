@@ -1,0 +1,98 @@
+name: 🚀 Complete RAG Deployment
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+  REGION: ${{ secrets.REGION }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - id: 'auth'
+      name: 'Authenticate to Google Cloud'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: 'Set up Cloud SDK'
+      uses: 'google-github-actions/setup-gcloud@v2'
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: Build and push Docker image
+      run: |
+        IMAGE_TAG=${GITHUB_SHA}
+        docker build -t us-central1-docker.pkg.dev/$GCP_PROJECT_ID/rag-system/$SERVICE_NAME:$IMAGE_TAG .
+        docker push us-central1-docker.pkg.dev/$GCP_PROJECT_ID/rag-system/$SERVICE_NAME:$IMAGE_TAG
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy $SERVICE_NAME \
+          --image=us-central1-docker.pkg.dev/$GCP_PROJECT_ID/rag-system/$SERVICE_NAME:$IMAGE_TAG \
+          --region=$REGION \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8000 \
+          --memory=2Gi \
+          --cpu=2 \
+          --timeout=300 \
+          --max-instances=10 \
+          --min-instances=0 \
+          --concurrency=100 \
+          --set-env-vars="ENVIRONMENT=production" \
+          --set-env-vars="DEBUG=false" \
+          --set-env-vars="GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID" \
+          --set-env-vars="GOOGLE_CLOUD_LOCATION=$REGION" \
+          --set-env-vars="VERTEX_AI_LOCATION=$REGION" \
+          --set-env-vars="ALLOWED_ORIGINS=*" \
+          --set-env-vars="GENERATION_MODEL=gemini-2.0-flash" \
+          --set-env-vars="EMBEDDING_MODEL=text-embedding-005" \
+          --set-env-vars="LOG_LEVEL=INFO" \
+          --set-env-vars="LOG_FORMAT=json" \
+          --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+          --set-env-vars="REDIS_URL=${{ secrets.REDIS_URL }}" \
+          --set-env-vars="VERTEX_CORPUS_ID=${{ secrets.VERTEX_CORPUS_ID }}" \
+          --set-env-vars="VERTEX_INDEX_ID=${{ secrets.VERTEX_INDEX_ID }}" \
+          --set-env-vars="RAG_DOCUMENT_CORPUS_ID=${{ secrets.RAG_DOCUMENT_CORPUS_ID }}" \
+          --set-env-vars="RAG_MEMORY_CORPUS_ID=${{ secrets.RAG_MEMORY_CORPUS_ID }}" \
+          --set-env-vars="GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
+          --set-env-vars="GOOGLE_SHEETS_SPREADSHEET_ID=${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" \
+          --set-env-vars="SECRET_KEY=${{ secrets.SECRET_KEY }}"
+
+    - name: Get Service URL
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
+        echo "Service deployed at: $SERVICE_URL"
+        echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_OUTPUT
+
+    - name: Test Deployment
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
+        echo "Testing deployment at: $SERVICE_URL/health"
+        
+        # Wait for service to be ready
+        sleep 30
+        
+        # Test health endpoint
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/health || echo "000")
+        echo "Health check status: $HTTP_STATUS"
+        
+        if [ "$HTTP_STATUS" = "200" ]; then
+          echo "✅ Deployment successful! Service is healthy."
+          echo "🌐 API Documentation: $SERVICE_URL/docs"
+          echo "📊 Health Check: $SERVICE_URL/health"
+          echo "🔍 RAG Query: $SERVICE_URL/api/v1/rag/query"
+        else
+          echo "⚠️ Deployment completed but health check failed. Check logs:"
+          echo "https://console.cloud.google.com/run/detail/$REGION/$SERVICE_NAME/logs?project=$GCP_PROJECT_ID"
+        fi
