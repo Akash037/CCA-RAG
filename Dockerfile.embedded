@@ -52,5 +52,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Start the application with correct gunicorn syntax (matching original working format)
-CMD ["sh", "-c", "gunicorn --bind :${PORT:-8080} --workers 2 --timeout 300 app.main:app"]
+# Start the application with correct gunicorn syntax
+CMD ["sh", "-c", "gunicorn app.main:app --bind 0.0.0.0:${PORT} --workers 2 --worker-class uvicorn.workers.UvicornWorker --timeout 300 --keep-alive 5 --max-requests 1000 --preload"]

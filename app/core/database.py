@@ -71,7 +71,7 @@ class Message(SQLModel, table=True):
     conversation_id: int = Field(foreign_key="conversation.id", index=True)
     role: str = Field(description="Message role: user, assistant, system")
     content: str = Field(description="Message content")
-    metadata: Optional[str] = Field(default=None, description="JSON-encoded metadata")
+    message_metadata: Optional[str] = Field(default=None, description="JSON-encoded metadata")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

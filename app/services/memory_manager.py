@@ -307,7 +307,7 @@ class LongTermMemoryManager:
                             "role": msg.role,
                             "content": msg.content,
                             "created_at": msg.created_at.isoformat(),
-                            "metadata": json.loads(msg.metadata) if msg.metadata else None
+                            "metadata": json.loads(msg.message_metadata) if msg.message_metadata else None
                         }
                         for msg in messages
                     ]
