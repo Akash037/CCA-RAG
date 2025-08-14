@@ -21,7 +21,7 @@ async def initialize_services():
     
     try:
         # Import services
-        from app.core.database import database_manager
+        from app.core.database import db_manager
         from app.services.memory_manager import memory_manager
         from app.services.rag_service import rag_service
         from app.services.google_drive_service import drive_sync_service
@@ -41,7 +41,7 @@ async def initialize_services():
         
         # Initialize database with timeout
         try:
-            await asyncio.wait_for(database_manager.initialize(), timeout=30.0)
+            await asyncio.wait_for(db_manager.create_tables(), timeout=30.0)
             services_status["database"] = True
             logger.info("Database initialized successfully")
         except Exception as e:
