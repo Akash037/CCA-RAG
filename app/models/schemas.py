@@ -239,6 +239,10 @@ class HealthCheck(BaseModel):
     components: Dict[str, str] = Field(..., description="Component status")
 
 
+# Alias for backward compatibility
+HealthCheckResponse = HealthCheck
+
+
 class SystemStats(BaseModel):
     """System statistics model."""
     total_queries: int = Field(..., description="Total queries processed")
